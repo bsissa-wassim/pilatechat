@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import openai
@@ -90,9 +91,39 @@ def chat(request: ChatRequest):
                 "content": request.message
             }
         ],
-        max_tokens=512
+        max_tokens=120
     )
 
     bot_response = response.choices[0].message.content
 
     return ChatResponse(response=bot_response)
+
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+    if not oxlo_api_key:
+        raise RuntimeError("OXLO_API_KEY is not configured")
+
+    def generate():
+        stream = client.chat.completions.create(
+            model="deepseek-r1-8b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": request.message
+                }
+            ],
+            max_tokens=512,
+            stream=True
+        )
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+
+    return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
